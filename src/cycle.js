@@ -23,6 +23,7 @@ import adapt from 'ugly-adapter'
 import wait from './wait'
 import task from './task'
 import UrlPath from './url-path'
+import request from 'request';
 
 let staticServer = (() => {
 
@@ -52,18 +53,19 @@ class ProvisionableRequest {
 
   constructor(opts) {
     this._respProm = task()
-    let h = (/https/i).test(opts.protocol) ? https : http
-    if (opts.proxy) {
-      let proxyInfo = url.parse(opts.proxy)
-        , proxyPort = proxyInfo.port
-        , proxyHostname = proxyInfo.hostname
-        , proxyPath = 'http://' + opts.hostname + (opts.port ? ':' + opts.port : '') + opts.path
-      opts.hostname = proxyHostname
-      opts.port = proxyPort
-      opts.path = proxyPath
-    }
-    this._writable = h.request(opts, this._respProm.resolve)
+    var requestOpts = {
+      uri: opts.protocol + '//' + opts.hostname + (opts.port ? ':' + opts.port : '') + opts.path,
+      method: opts.method,
+      headers: opts.headers,
+      followRedirect: false,
+      encoding: null,
+    };
+
+    this._writable = request(requestOpts)
+    // Prevent the stream from entering flowing mode immediately.
+    this._writable.pause()
     this._writable.on('error', this._respProm.reject)
+    this._writable.on('response', this._respProm.resolve)
   }
 
   send(readable) {
@@ -320,6 +322,7 @@ export default class Cycle extends EventEmitter {
         source.on('error', reject)
         source.on('end', resolve)
         source.pipe(outResp)
+        source.resume()
       })
     })
   }
